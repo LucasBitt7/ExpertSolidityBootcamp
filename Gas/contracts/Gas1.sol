@@ -1,18 +1,63 @@
+// GAS OPTIMAZATION 4006566 ==> 3178965 21.7%
+
+// BEFORE
+// ·----------------------------------|----------------------------|-------------|-----------------------------·
+// |       Solc version: 0.8.0        ·  Optimizer enabled: false  ·  Runs: 200  ·  Block limit: 30000000 gas  │
+// ···································|····························|·············|······························
+// |  Methods                                                                                                  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  Contract     ·  Method          ·  Min         ·  Max        ·  Avg        ·  # calls      ·  usd (avg)  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  addToWhitelist  ·       60239  ·      64698  ·      62473  ·         2400  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  transfer        ·      145461  ·     196785  ·     171125  ·           20  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  updatePayment   ·           -  ·          -  ·     190499  ·            2  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  whiteTransfer   ·           -  ·          -  ·      54795  ·            6  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  Deployments                     ·                                          ·  % of limit   ·             │
+// ···································|··············|·············|·············|···············|··············
+// |  GasContract                     ·           -  ·          -  ·    4006566  ·         13 %  ·          -  │
+// ·----------------------------------|--------------|-------------|-------------|---------------|-------------·
+
+// AFTER
+// ·----------------------------------|----------------------------|-------------|-----------------------------·
+// |       Solc version: 0.8.7        ·  Optimizer enabled: false  ·  Runs: 200  ·  Block limit: 30000000 gas  │
+// ···································|····························|·············|······························
+// |  Methods                                                                                                  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  Contract     ·  Method          ·  Min         ·  Max        ·  Avg        ·  # calls      ·  usd (avg)  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  addToWhitelist  ·       57643  ·      57871  ·      57760  ·         2400  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  transfer        ·      142061  ·     193385  ·     167725  ·           20  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  updatePayment   ·           -  ·          -  ·     180277  ·            2  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  GasContract  ·  whiteTransfer   ·           -  ·          -  ·      54795  ·            6  ·          -  │
+// ················|··················|··············|·············|·············|···············|··············
+// |  Deployments                     ·                                          ·  % of limit   ·             │
+// ···································|··············|·············|·············|···············|··············
+// |  GasContract                     ·           -  ·          -  ·    3178965  ·       10.6 %  ·          -  │
+// ·----------------------------------|--------------|-------------|-------------|---------------|-------------·
+
+
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.0;
+pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Constants {
-    uint256 public tradeFlag = 1;
-    uint256 public basicFlag = 0;
-    uint256 public dividendFlag = 1;
+    uint8 constant public tradeFlag = 1;
+    uint8 constant public basicFlag = 0;
+    uint8 constant public dividendFlag = 1;
 }
 
 contract GasContract is Ownable, Constants {
     uint256 public totalSupply; // cannot be updated
     uint256 public paymentCounter;
-    uint256 public tradePercent = 12;
-    address public contractOwner;
+    uint256 constant public tradePercent = 12;
+    address public immutable contractOwner;
     uint256 public tradeMode;
     address[5] public administrators;
     enum PaymentType {
@@ -30,36 +75,37 @@ contract GasContract is Ownable, Constants {
     mapping(address => uint256) public whitelist;
 
     struct Payment {
-        uint256 paymentID;
+        uint paymentID;
         bool adminUpdated;
         PaymentType paymentType;
         address recipient;
         string recipientName; // max 8 characters
         address admin; // administrators address
-        uint256 amount;
+        uint amount;
     }
 
     struct History {
-        uint256 lastUpdate;
+        uint lastUpdate;
         address updatedBy;
-        uint256 blockNumber;
+        uint blockNumber;
     }
 
     event AddedToWhitelist(address userAddress, uint256 tier);
 
+    error InvalidPaymentName();
+    error Unauthorized();
+    error InvalidPaymentType();
+    error InvalidPaymentAmount();
+    error InvalidPaymentID();
+    
+
     modifier onlyAdminOrOwner() {
         if (checkForAdmin(msg.sender)) {
-            require(
-                checkForAdmin(msg.sender),
-                "Gas Contract Only Admin Check-  Caller not admin"
-            );
             _;
         } else if (msg.sender == contractOwner) {
             _;
         } else {
-            revert(
-                "Error in Gas contract - onlyAdminOrOwner modifier : revert happened because the originator of the transaction was not the admin, and furthermore he wasn't the owner of the contract, so he cannot run this function"
-            );
+            revert Unauthorized();
         }
     }
 
@@ -95,28 +141,29 @@ contract GasContract is Ownable, Constants {
     }
 
     function getPaymentHistory()
-        public
-        returns (History[] memory paymentHistory_)
+        public view
+        returns (History[] memory)
     {
         return paymentHistory;
     }
 
-    function checkForAdmin(address _user) public view returns (bool admin_) {
+    function checkForAdmin(address _user) public view returns (bool) {
         bool admin = false;
-        for (uint256 ii = 0; ii < administrators.length; ii++) {
-            if (administrators[ii] == _user) {
+        for (uint256 i = 0; i < administrators.length; )
+         {
+            if (administrators[i] == _user) {
                 admin = true;
             }
+            unchecked { i++;}
         }
         return admin;
     }
 
-    function balanceOf(address _user) public view returns (uint256 balance_) {
-        uint256 balance = balances[_user];
-        return balance;
+    function balanceOf(address _user) public view returns (uint256) {
+        return balances[_user];
     }
 
-    function getTradingMode() public view returns (bool mode_) {
+    function getTradingMode() public pure returns (bool mode_) {
         bool mode = false;
         if (tradeFlag == 1 || dividendFlag == 1) {
             mode = true;
@@ -136,8 +183,9 @@ contract GasContract is Ownable, Constants {
         history.updatedBy = _updateAddress;
         paymentHistory.push(history);
         bool[] memory status = new bool[](tradePercent);
-        for (uint256 i = 0; i < tradePercent; i++) {
+        for (uint256 i = 0; i < tradePercent;) {
             status[i] = true;
+             unchecked { i++;}
         }
         return ((status[0] == true), _tradeMode);
     }
@@ -145,12 +193,12 @@ contract GasContract is Ownable, Constants {
     function getPayments(address _user)
         public
         view
-        returns (Payment[] memory payments_)
+        returns (Payment[] memory )
     {
-        require(
-            _user != address(0),
-            "Gas Contract - getPayments function - User must have a valid non zero address"
-        );
+        if(
+            _user == address(0)
+        ) revert InvalidPaymentID();
+
         return payments[_user];
     }
 
@@ -158,15 +206,13 @@ contract GasContract is Ownable, Constants {
         address _recipient,
         uint256 _amount,
         string calldata _name
-    ) public returns (bool status_) {
-        require(
-            balances[msg.sender] >= _amount,
-            "Gas Contract - Transfer function - Sender has insufficient Balance"
-        );
-        require(
-            bytes(_name).length < 9,
-            "Gas Contract - Transfer function -  The recipient name is too long, there is a max length of 8 characters"
-        );
+    ) public returns (bool) {
+        if(
+            balances[msg.sender] < _amount
+        ) revert InvalidPaymentAmount();
+        if(
+            bytes(_name).length >= 8
+        ) revert InvalidPaymentName();
         balances[msg.sender] -= _amount;
         balances[_recipient] += _amount;
         emit Transfer(_recipient, _amount);
@@ -192,34 +238,32 @@ contract GasContract is Ownable, Constants {
         uint256 _amount,
         PaymentType _type
     ) public onlyAdminOrOwner {
-        require(
-            _ID > 0,
-            "Gas Contract - Update Payment function - ID must be greater than 0"
-        );
-        require(
-            _amount > 0,
-            "Gas Contract - Update Payment function - Amount must be greater than 0"
-        );
-        require(
-            _user != address(0),
-            "Gas Contract - Update Payment function - Administrator must have a valid non zero address"
-        );
+        if(
+            _ID <= 0
+        ) revert InvalidPaymentID();
+        if(
+           !( _amount > 0)
+        ) revert InvalidPaymentAmount();
+        if(
+            _user == address(0)
+        ) revert Unauthorized();
 
-        for (uint256 ii = 0; ii < payments[_user].length; ii++) {
-            if (payments[_user][ii].paymentID == _ID) {
-                payments[_user][ii].adminUpdated = true;
-                payments[_user][ii].admin = _user;
-                payments[_user][ii].paymentType = _type;
-                payments[_user][ii].amount = _amount;
+        for (uint256 i = 0; i < payments[_user].length;) {
+            if (payments[_user][i].paymentID == _ID) {
+                payments[_user][i].adminUpdated = true;
+                payments[_user][i].admin = _user;
+                payments[_user][i].paymentType = _type;
+                payments[_user][i].amount = _amount;
                 bool tradingMode = getTradingMode();
                 addHistory(_user, tradingMode);
                 emit PaymentUpdated(
                     msg.sender,
                     _ID,
                     _amount,
-                    payments[_user][ii].recipientName
+                    payments[_user][i].recipientName
                 );
             }
+            unchecked { i++;}
         }
     }
 
@@ -227,19 +271,19 @@ contract GasContract is Ownable, Constants {
         public
         onlyAdminOrOwner
     {
-        require(
-            _tier < 255,
-            "Gas Contract - addToWhitelist function -  tier level should not be greater than 255"
-        );
+        if(
+            _tier > 255
+        ) revert InvalidPaymentAmount();
+        if(
+            _userAddrs == address(0)
+        ) revert Unauthorized();
+
         whitelist[_userAddrs] = _tier;
         if (_tier > 3) {
-            whitelist[_userAddrs] -= _tier;
             whitelist[_userAddrs] = 3;
         } else if (_tier == 1) {
-            whitelist[_userAddrs] -= _tier;
             whitelist[_userAddrs] = 1;
         } else if (_tier > 0 && _tier < 3) {
-            whitelist[_userAddrs] -= _tier;
             whitelist[_userAddrs] = 2;
         }
 
@@ -247,14 +291,12 @@ contract GasContract is Ownable, Constants {
     }
 
     function whiteTransfer(address _recipient, uint256 _amount) public {
-        require(
-            balances[msg.sender] >= _amount,
-            "Gas Contract - whiteTransfers function - Sender has insufficient Balance"
-        );
-        require(
-            _amount > 3,
-            "Gas Contract - whiteTransfers function - amount to send have to be bigger than 3"
-        );
+        if(
+            balances[msg.sender] < _amount
+        ) revert InvalidPaymentAmount();
+        if(
+            _amount <= 3 
+        ) revert InvalidPaymentAmount();
         balances[msg.sender] -= _amount;
         balances[_recipient] += _amount;
         balances[msg.sender] += whitelist[msg.sender];
